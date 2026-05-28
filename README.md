@@ -1,0 +1,464 @@
+# MakePay JavaScript SDK
+
+Official JavaScript and TypeScript SDK for MakePay server-side integrations.
+Use it to create crypto payment links, donation pages, invoices, bookkeeping
+records, subscriptions, POS terminals, products, Simple Shop storefronts,
+customer portals, branded domains, and signed webhook handlers.
+
+Public source: `https://github.com/makecryptoio/makepay-npm-sdk`
+
+## Install
+
+```bash
+npm install @makecrypto/makepay
+```
+
+```bash
+pnpm add @makecrypto/makepay
+```
+
+The SDK targets Node.js 18 or newer and uses the runtime `fetch`
+implementation.
+
+## Configure
+
+Create a MakePay API key in MakeCrypto and keep the secret on your server only.
+
+```ts
+import { MakePayClient } from "@makecrypto/makepay";
+
+const makepay = new MakePayClient({
+  keyId: process.env.MAKEPAY_KEY_ID!,
+  keySecret: process.env.MAKEPAY_KEY_SECRET!,
+});
+```
+
+The client sends `x-makecrypto-key-id` and `x-makecrypto-key-secret` headers to
+the MakePay partner API.
+
+## Payment Links
+
+```ts
+const response = await makepay.createPaymentLink({
+  title: "Order #1042",
+  description: "Checkout for order #1042",
+  amount: "129.99",
+  currency: "USDT",
+  orderId: "order_1042",
+  customerEmail: "buyer@example.com",
+  returnUrl: "https://merchant.example/orders/1042",
+  successUrl: "https://merchant.example/orders/1042/success",
+  failureUrl: "https://merchant.example/orders/1042/pay",
+  expirationTime: "12h",
+});
+
+console.log(response.paymentLink);
+```
+
+Read, update, and email existing links:
+
+```ts
+await makepay.listPaymentLinks();
+await makepay.getPaymentLink("PAYMENT_LINK_UID");
+await makepay.updatePaymentLink("PAYMENT_LINK_UID", { status: "paused" });
+await makepay.sendPaymentRequestEmail("PAYMENT_LINK_UID", "buyer@example.com");
+```
+
+## Donations
+
+Donation pages are flexible-amount payment links with a public donation slug.
+
+```ts
+const donation = await makepay.createDonationLink({
+  title: "Spring campaign",
+  description: "Support the 2026 spring fundraiser.",
+  defaultAmountUsd: "25",
+  minimumAmountUsd: "5",
+  donationSlug: "spring-campaign",
+});
+
+console.log(donation.paymentLink.publicUrl);
+
+await makepay.listDonationLinks();
+await makepay.getDonationLink("DONATION_UID");
+await makepay.updateDonationLink("DONATION_UID", { status: "paused" });
+```
+
+## Anonymous Payment Links
+
+Anonymous links do not use a MakePay API key. They require an explicit
+settlement route because MakePay cannot read merchant wallet settings.
+
+```ts
+import { createAnonymousPaymentLink } from "@makecrypto/makepay";
+
+const response = await createAnonymousPaymentLink({
+  amount: "25",
+  settlement: {
+    currency: "USDT",
+    priorities: [
+      {
+        chain: "ETH",
+        address: "0xYourSettlementWallet",
+        asset: "ETH.USDT-0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      },
+    ],
+  },
+  title: "Invoice #1042",
+  webhookUrl: "https://merchant.example/webhooks/makepay",
+});
+```
+
+## Checkout URLs And Embeds
+
+Use hosted checkout for redirects, or the embed helpers when your frontend keeps
+the shopper on the merchant site.
+
+```ts
+import {
+  buildMakePayEmbeddedCheckoutUrl,
+  buildMakePayHostedCheckoutUrl,
+  mountMakePayCheckout,
+  openMakePayCheckout,
+} from "@makecrypto/makepay";
+
+const paymentUid = response.paymentLink.uid;
+
+const hostedUrl = buildMakePayHostedCheckoutUrl(paymentUid);
+const embedUrl = buildMakePayEmbeddedCheckoutUrl(paymentUid, {
+  parentOrigin: "https://merchant.example",
+});
+
+await openMakePayCheckout({
+  paymentUid,
+  onEvent(event) {
+    if (event.type === "makepay.payment.redirect_requested") {
+      window.location.assign(String(event.payload?.redirectUrl || hostedUrl));
+    }
+  },
+});
+
+const mounted = mountMakePayCheckout({
+  container: "#makepay-checkout",
+  paymentUid,
+});
+```
+
+Donation pages also have URL helpers:
+
+```ts
+makepay.hostedDonationUrl("spring-campaign");
+makepay.embeddedDonationUrl("spring-campaign", {
+  parentOrigin: "https://merchant.example",
+});
+```
+
+For static CMS pages, `buildMakePayEmbedButtonHtml(paymentUid)` returns a button
+snippet that loads the MakePay modal script, and `buildMakePayIframeHtml`
+returns an iframe snippet.
+
+## Customers And Subscriptions
+
+```ts
+await makepay.upsertCustomer({
+  email: "buyer@example.com",
+  name: "Buyer Example",
+  clientId: "crm_123",
+});
+
+await makepay.createCustomerPortal("CUSTOMER_ID", {
+  returnUrl: "https://merchant.example/account",
+});
+
+await makepay.createSubscription({
+  amountUsd: "29",
+  customerEmail: "buyer@example.com",
+  label: "Monthly plan",
+  billingIntervalUnit: "month",
+  billingIntervalCount: 1,
+});
+```
+
+## POS Terminals
+
+```ts
+const terminal = await makepay.createPosTerminal({
+  name: "Front counter",
+  pin: "1234",
+  allowedAssets: ["ETH.USDT-0xdAC17F958D2ee523a2206206994597C13D831ec7"],
+  emailCollectionMode: "optional_after_deposit",
+  catalogEnabled: true,
+});
+
+await makepay.listPosTerminals();
+await makepay.getPosTerminal(String(terminal.terminal.uid));
+```
+
+## Products And Simple Shop
+
+```ts
+await makepay.createProduct({
+  name: "Digital guide",
+  productType: "digital",
+  basePriceUsd: "19",
+  shopSlug: "digital-guide",
+  images: [{ url: "https://merchant.example/guide.png", alt: "Guide cover" }],
+  variants: [{ name: "PDF", priceUsd: "19" }],
+});
+
+await makepay.createProductDownload("PRODUCT_UID", {
+  fileName: "guide.pdf",
+  contentType: "application/pdf",
+  url: "https://merchant.example/downloads/guide.pdf",
+});
+
+await makepay.updateShop({
+  slug: "merchant-shop",
+  displayCurrency: "USD",
+  checkoutMode: "hosted",
+  branding: { accentColor: "#14b8a6" },
+});
+
+await makepay.updateShopDomain("shop.merchant.example");
+await makepay.refreshShopDomain();
+await makepay.createShopCoupon({
+  code: "SPRING10",
+  discountType: "percent",
+  value: "10",
+});
+await makepay.listShopOrders({ status: "paid", limit: 25 });
+```
+
+## Invoices And Bookkeeping
+
+Bookkeeping APIs manage merchant invoices, expenses, supporting documents, OCR,
+and reconciliation links.
+
+```ts
+const created = await makepay.createBookkeepingInvoice({
+  title: "Invoice #1042",
+  currency: "USD",
+  issueDate: "2026-05-15",
+  dueDate: "2026-05-30",
+  counterparty: {
+    name: "Buyer Example",
+    email: "buyer@example.com",
+    clientId: "crm_123",
+  },
+  lineItems: [
+    {
+      description: "Implementation services",
+      quantity: "1",
+      unitAmount: "500",
+      taxAmount: "0",
+    },
+  ],
+  metadata: { orderId: "order_1042" },
+});
+
+await makepay.createBookkeepingInvoicePaymentLink("INVOICE_UID", {
+  sendPaymentRequestEmail: true,
+});
+
+await makepay.listBookkeepingInvoices();
+await makepay.getBookkeepingInvoice("INVOICE_UID");
+await makepay.updateBookkeepingInvoice("INVOICE_UID", { status: "open" });
+```
+
+Expenses can be created manually or from wallet activity, then linked back to
+payments, transfers, invoices, or uploaded receipts.
+
+```ts
+await makepay.createBookkeepingExpense({
+  title: "Hosting",
+  amount: "49",
+  currency: "USD",
+  incurredOn: "2026-05-15",
+  category: "Infrastructure",
+  counterparty: { name: "Vendor Example", type: "vendor" },
+});
+
+await makepay.createBookkeepingExpenseFromActivity({
+  walletActivityEventKey: "CHAIN_EVENT_KEY",
+  category: "Settlement",
+});
+
+await makepay.createBookkeepingReconciliation({
+  invoiceId: "INVOICE_UID",
+  paymentSessionId: "PAYMENT_SESSION_ID",
+  linkType: "payment",
+});
+```
+
+Document uploads use multipart form data through `Blob` or `File`.
+
+```ts
+await makepay.uploadBookkeepingDocument({
+  file: new Blob([receiptBytes], { type: "application/pdf" }),
+  fileName: "receipt.pdf",
+  documentType: "receipt",
+  expenseId: "EXPENSE_UID",
+});
+
+await makepay.listBookkeepingDocuments();
+await makepay.getBookkeepingDocumentDownloadUrl("DOCUMENT_UID");
+await makepay.runBookkeepingDocumentOcr("DOCUMENT_UID");
+await makepay.getBookkeepingSummary();
+```
+
+## Branding And Domains
+
+```ts
+await makepay.updateBranding({
+  brandName: "Merchant",
+  supportEmail: "support@merchant.example",
+  brandingBrandColor: "#111827",
+  brandingAccentColor: "#14b8a6",
+  paymentLinkTheme: "system",
+  paymentLinkDomain: "pay.merchant.example",
+  emailSendingDomain: "mail.merchant.example",
+});
+
+await makepay.refreshBrandingDomains("all");
+```
+
+## Settings And Operational APIs
+
+```ts
+await makepay.getSettings();
+await makepay.updateSettings({
+  callbackUrl: "https://merchant.example/webhooks/makepay",
+});
+
+await makepay.listDestinationAssets();
+await makepay.listWebhookRequests({ limit: 25 });
+```
+
+## Webhook Verification
+
+Read the exact raw body before parsing JSON.
+
+```ts
+import { parseMakePayWebhook } from "@makecrypto/makepay";
+
+export async function POST(request: Request) {
+  const rawBody = await request.text();
+  const event = parseMakePayWebhook(
+    rawBody,
+    request.headers.get("x-makepay-signature"),
+    process.env.MAKEPAY_WEBHOOK_SECRET!,
+  );
+
+  if (event.event?.type === "status_changed") {
+    // Update your local order status.
+  }
+
+  return new Response("ok");
+}
+```
+
+Use `verifyMakePayWebhook` when you only need a boolean result.
+
+## Method Coverage
+
+| Area            | SDK methods                                                                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Payment links   | `createPaymentLink`, `listPaymentLinks`, `getPaymentLink`, `updatePaymentLink`, `sendPaymentRequestEmail`                                 |
+| Donations       | `createDonationLink`, `listDonationLinks`, `getDonationLink`, `updateDonationLink`                                                        |
+| Anonymous links | `createAnonymousPaymentLink`                                                                                                              |
+| Checkout        | hosted, embedded, modal, button, and iframe helpers                                                                                       |
+| Customers       | `listCustomers`, `upsertCustomer`, `createCustomerPortal`                                                                                 |
+| Subscriptions   | `listSubscriptions`, `createSubscription`                                                                                                 |
+| POS terminals   | `listPosTerminals`, `createPosTerminal`, `getPosTerminal`, `updatePosTerminal`                                                            |
+| Products        | `listProducts`, `createProduct`, `getProduct`, `updateProduct`, `listProductDownloads`, `createProductDownload`                           |
+| Simple Shop     | `getShop`, `updateShop`, `getShopBuilder`, `updateShopBuilder`, `getShopDomain`, `updateShopDomain`, `refreshShopDomain`, coupons, orders |
+| Bookkeeping     | summary, invoice, expense, document upload/OCR, and reconciliation methods                                                                |
+| Branding        | `getBranding`, `updateBranding`, `refreshBrandingDomains`                                                                                 |
+| Operations      | `getSettings`, `updateSettings`, `listDestinationAssets`, `listWebhookRequests`                                                           |
+| Webhooks        | `verifyMakePayWebhook`, `parseMakePayWebhook`                                                                                             |
+
+## TypeScript, Data Models, And Response Models
+
+`@makecrypto/makepay` is written in TypeScript and ships declaration files in
+the same npm package. You do not need `@types/makecrypto__makepay` or a
+secondary SDK package.
+
+```ts
+import type {
+  MakePayBookkeepingInvoicePayload,
+  MakePayBookkeepingSummaryResponse,
+  MakePayPaymentLinkPayload,
+  MakePayPaymentLinkResponse,
+} from "@makecrypto/makepay";
+```
+
+Model conventions:
+
+- SDK payloads use camelCase. Some API routes also accept snake_case for
+  compatibility, but new integrations should send camelCase.
+- Use strings for decimal money values when precision matters, for example
+  `"129.99"` instead of `129.99`.
+- Dates are ISO strings. Date-only fields, such as invoice `issueDate`, should
+  use `YYYY-MM-DD`.
+- IDs are usually public `uid` values. Bookkeeping detail endpoints accept an
+  internal UUID or public UID.
+- API methods throw `MakePayError` for non-2xx responses. Successful responses
+  are typed envelopes with index signatures, so production can add fields
+  without breaking TypeScript consumers.
+
+### Accepted Payload Models
+
+| Model                                     | Used by                                                                                        | Required fields                                          | Common optional fields                                                                                                            |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `MakePayPaymentLinkPayload`               | `createPaymentLink`                                                                            | `amount`                                                 | `title`, `description`, `currency`, `asset`, `orderId`, `customerEmail`, `clientId`, `returnUrl`, `successUrl`, `metadata`        |
+| `MakePayDonationLinkPayload`              | `createDonationLink`                                                                           | none                                                     | `defaultAmountUsd`, `minimumAmountUsd`, `donationSlug`, payment-link display and redirect fields                                  |
+| `MakePayAnonymousPaymentLinkPayload`      | `createAnonymousPaymentLink`                                                                   | `amount`, `settlement.currency`, `settlement.priorities` | `title`, `customerEmail`, `orderId`, `metadata`, `branding`, `webhookUrl`, checkout redirect URLs                                 |
+| `MakePayCustomerPayload`                  | `upsertCustomer`                                                                               | one of `email`, `customerEmail`, `name`, `clientId`      | `metadata`                                                                                                                        |
+| `MakePaySubscriptionPayload`              | `createSubscription`                                                                           | plan amount/customer fields for your billing flow        | `amountUsd`, `customerEmail`, `label`, `billingIntervalUnit`, `billingIntervalCount`, `startAt`, `sendPaymentRequestEmail`        |
+| `MakePayPosTerminalPayload`               | `createPosTerminal`, `updatePosTerminal`                                                       | `name`                                                   | `pin`, `status`, `allowedAssets`, `emailCollectionMode`, `catalogEnabled`, `displaySettings`, `metadata`                          |
+| `MakePayProductPayload`                   | `createProduct`, `updateProduct`                                                               | `name`                                                   | `description`, `sku`, `status`, `productType`, `basePriceUsd`, `shopSlug`, `images`, `variants`, `taxRates`, `metadata`           |
+| `MakePayShopPayload`                      | `updateShop`                                                                                   | none                                                     | `slug`, `status`, `displayCurrency`, `checkoutMode`, `billingDetailsRequired`, shipping fields, links, SEO, tracking, branding    |
+| `MakePayBrandingPayload`                  | `updateBranding`                                                                               | none                                                     | brand name, support email, website URL, theme colors, `paymentLinkDomain`, `emailSendingDomain`                                   |
+| `MakePayBookkeepingInvoicePayload`        | `createBookkeepingInvoice`, `updateBookkeepingInvoice`                                         | none; blank invoices are allowed as drafts               | `invoiceNumber`, `status`, `paymentStatus`, `currency`, `issueDate`, `dueDate`, `counterparty`, `lineItems`, `documentIds`        |
+| `MakePayBookkeepingExpensePayload`        | `createBookkeepingExpense`, `createBookkeepingExpenseFromActivity`, `updateBookkeepingExpense` | none; amount defaults to zero if no activity is used     | `amount`, `currency`, `category`, `incurredOn`, `walletActivityEventId`, `walletActivityEventKey`, `counterparty`, `metadata`     |
+| `MakePayBookkeepingDocumentUpload`        | `uploadBookkeepingDocument`                                                                    | `file`                                                   | `fileName`, `documentType`, `invoiceId`, `expenseId`                                                                              |
+| `MakePayBookkeepingReconciliationPayload` | `createBookkeepingReconciliation`                                                              | one target and one source                                | target: `invoiceId` or `expenseId`; source: payment link/session, subscription cycle, or wallet activity; `amount`, `assetSymbol` |
+| `Record<string, unknown>`                 | product downloads, shop builder, coupons, settings, customer portal                            | route-specific                                           | these advanced surfaces stay open-ended while their server schemas evolve                                                         |
+
+### Response Models By Function
+
+| Functions                                                                                                                | Resolves to                                                                              | Key fields                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `createPaymentLink`, `getPaymentLink`, `updatePaymentLink`, `sendPaymentRequestEmail`, donation variants                 | `MakePayPaymentLinkResponse`                                                             | `ok`, `companyId`, `paymentLink`, `paymentRequestEmailSent`, `paymentRequestEmailError`                     |
+| `listPaymentLinks`, `listDonationLinks`                                                                                  | `MakePayPaymentLinksResponse`                                                            | `companyId`, `paymentLinks`                                                                                 |
+| `createAnonymousPaymentLink`                                                                                             | `MakePayPaymentLinkResponse`                                                             | `paymentLink`, plus public-link metadata returned by the API                                                |
+| `listCustomers`, `upsertCustomer`, `createCustomerPortal`                                                                | `MakePayCustomersResponse` or `MakePayCustomerResponse`                                  | `customers`, `customer`, `portalUrl` or `url`                                                               |
+| `listSubscriptions`, `createSubscription`                                                                                | `MakePaySubscriptionsResponse` or `MakePaySubscriptionResponse`                          | `subscriptions`, `subscription`                                                                             |
+| `listPosTerminals`, `createPosTerminal`, `getPosTerminal`, `updatePosTerminal`                                           | `MakePayPosTerminalsResponse` or `MakePayPosTerminalResponse`                            | `terminals`/`posTerminals`, `terminal`/`posTerminal`                                                        |
+| `listProducts`, `createProduct`, `getProduct`, `updateProduct`, `listProductDownloads`, `createProductDownload`          | product and download response types                                                      | `products`, `product`, `downloads`                                                                          |
+| `getShop`, `updateShop`, `getShopBuilder`, `updateShopBuilder`, `getShopDomain`, `updateShopDomain`, `refreshShopDomain` | shop, builder, and domain response types                                                 | `shop`, `blocks`, `builder`, `domain`, `status`, `verification`                                             |
+| `listShopCoupons`, `createShopCoupon`, `updateShopCoupon`, `archiveShopCoupon`, `listShopOrders`                         | coupon and order response types                                                          | `coupons`, `coupon`, `orders`                                                                               |
+| `getBranding`, `updateBranding`, `refreshBrandingDomains`, `getSettings`, `updateSettings`                               | `MakePayBrandingResponse`, `MakePaySettingsResponse`, or `MakePaySettingsUpdateResponse` | `company`, `settings`, `ok`                                                                                 |
+| `listDestinationAssets`, `listWebhookRequests`                                                                           | operational response types                                                               | `assets`/`destinationAssets`, `webhookRequests`/`requests`                                                  |
+| `getBookkeepingSummary`, invoice, expense, document, OCR, and reconciliation methods                                     | bookkeeping response types                                                               | `summary`, `invoices`, `invoice`, `expenses`, `expense`, `documents`, `url`, `reconciliationLinks`, `stats` |
+| `verifyMakePayWebhook`, `parseMakePayWebhook`                                                                            | boolean or parsed event                                                                  | `parseMakePayWebhook<T>()` returns your supplied event type after signature verification                    |
+
+Bookkeeping mutation methods return a fresh
+`MakePayBookkeepingSummaryResponse`, so dashboards can update invoice, expense,
+document, reconciliation, and stat views from a single response.
+
+## Errors
+
+API calls throw `MakePayError` with `status` and `responseBody` fields.
+
+```ts
+import { MakePayError } from "@makecrypto/makepay";
+
+try {
+  await makepay.getPaymentLink("PAYMENT_LINK_UID");
+} catch (error) {
+  if (error instanceof MakePayError) {
+    console.error(error.status, error.responseBody);
+  }
+}
+```

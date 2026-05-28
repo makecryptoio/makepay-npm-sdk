@@ -1,0 +1,50 @@
+{
+  "name": "@makecrypto/makepay",
+  "version": "0.3.0",
+  "description": "Official MakePay JavaScript and TypeScript SDK for payments, invoices, bookkeeping, POS, products, Simple Shop, branding, and webhooks.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makecryptoio/makepay-npm-sdk.git"
+  },
+  "homepage": "https://www.makecrypto.io/documentation/sdk/npm",
+  "bugs": {
+    "url": "https://github.com/makecryptoio/makepay-npm-sdk/issues"
+  },
+  "keywords": [
+    "makepay",
+    "makecrypto",
+    "crypto-payments",
+    "payment-links",
+    "donations",
+    "invoices",
+    "bookkeeping",
+    "pos",
+    "products",
+    "webhooks",
+    "typescript"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node tests/run.mjs",
+    "pack:dry-run": "npm pack --dry-run"
+  }
+}
