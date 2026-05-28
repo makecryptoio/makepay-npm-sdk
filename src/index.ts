@@ -782,7 +782,7 @@ export class MakePayError extends Error {
 export class MakePayClient {
   static readonly defaultBaseUrl = "https://www.makecrypto.io";
   static readonly defaultCheckoutBaseUrl = "https://makepay.io";
-  static readonly version = "0.3.0";
+  static readonly version = "0.3.1";
 
   private readonly baseUrl: string;
   private readonly checkoutBaseUrl: string;

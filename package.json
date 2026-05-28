@@ -1,6 +1,6 @@
 {
   "name": "@makecrypto/makepay",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Official MakePay JavaScript and TypeScript SDK for payments, invoices, bookkeeping, POS, products, Simple Shop, branding, and webhooks.",
   "license": "MIT",
   "type": "module",
